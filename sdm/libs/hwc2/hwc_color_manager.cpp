@@ -200,12 +200,14 @@ int HWCColorManager::SetFrameCapture(void *params, bool enable, HWCDisplay *hwc_
 
   if (enable) {
     std::memset(&buffer_info, 0x00, sizeof(buffer_info));
-    hwc_display->GetPanelResolution(&buffer_info.buffer_config.width,
-                                    &buffer_info.buffer_config.height);
+    hwc_display->GetFrameBufferResolution(&buffer_info.buffer_config.width,
+                                          &buffer_info.buffer_config.height);
     if (frame_capture_data->input_params.out_pix_format == PP_PIXEL_FORMAT_RGB_888) {
       buffer_info.buffer_config.format = kFormatRGB888;
     } else if (frame_capture_data->input_params.out_pix_format == PP_PIXEL_FORMAT_RGB_2101010) {
-      buffer_info.buffer_config.format = kFormatRGBA1010102;
+      // TODO(user): Complete the implementation
+      DLOGE("RGB 10-bit format NOT supported");
+      return -EFAULT;
     } else {
       DLOGE("Pixel-format: %d NOT support.", frame_capture_data->input_params.out_pix_format);
       return -EFAULT;
@@ -225,7 +227,7 @@ int HWCColorManager::SetFrameCapture(void *params, bool enable, HWCDisplay *hwc_
     ret = buffer_allocator_->AllocateBuffer(&buffer_info);
     if (ret != 0) {
       DLOGE("Buffer allocation failed. ret: %d", ret);
-      delete buffer_allocator_;
+      delete[] buffer_allocator_;
       buffer_allocator_ = NULL;
       return -ENOMEM;
     } else {
@@ -236,7 +238,7 @@ int HWCColorManager::SetFrameCapture(void *params, bool enable, HWCDisplay *hwc_
         DLOGE("mmap failed. err = %d", errno);
         frame_capture_data->buffer = NULL;
         ret = buffer_allocator_->FreeBuffer(&buffer_info);
-        delete buffer_allocator_;
+        delete[] buffer_allocator_;
         buffer_allocator_ = NULL;
         return -EFAULT;
       } else {
@@ -244,30 +246,22 @@ int HWCColorManager::SetFrameCapture(void *params, bool enable, HWCDisplay *hwc_
         frame_capture_data->buffer_stride = buffer_info.alloc_buffer_info.stride;
         frame_capture_data->buffer_size = buffer_info.alloc_buffer_info.size;
       }
-      ret = hwc_display->FrameCaptureAsync(buffer_info, 1);
-      if (ret < 0) {
-        DLOGE("FrameCaptureAsync failed. ret = %d", ret);
-      }
+      // TODO(user): Call HWC interface to provide the buffer and rectangle information
     }
   } else {
-    ret = hwc_display->GetFrameCaptureStatus();
-    if (!ret) {
-      if (frame_capture_data->buffer != NULL) {
-        if (munmap(frame_capture_data->buffer, buffer_info.alloc_buffer_info.size) != 0) {
-          DLOGE("munmap failed. err = %d", errno);
-        }
+    if (frame_capture_data->buffer != NULL) {
+      if (munmap(frame_capture_data->buffer, buffer_info.alloc_buffer_info.size) != 0) {
+        DLOGE("munmap failed. err = %d", errno);
       }
-      if (buffer_allocator_ != NULL) {
-        std::memset(frame_capture_data, 0x00, sizeof(PPFrameCaptureData));
-        ret = buffer_allocator_->FreeBuffer(&buffer_info);
-        if (ret != 0) {
-          DLOGE("FreeBuffer failed. ret = %d", ret);
-        }
-        delete buffer_allocator_;
-        buffer_allocator_ = NULL;
+    }
+    if (buffer_allocator_ != NULL) {
+      std::memset(frame_capture_data, 0x00, sizeof(PPFrameCaptureData));
+      ret = buffer_allocator_->FreeBuffer(&buffer_info);
+      if (ret != 0) {
+        DLOGE("FreeBuffer failed. ret = %d", ret);
       }
-    } else {
-      DLOGE("GetFrameCaptureStatus failed. ret = %d", ret);
+      delete[] buffer_allocator_;
+      buffer_allocator_ = NULL;
     }
   }
   return ret;
